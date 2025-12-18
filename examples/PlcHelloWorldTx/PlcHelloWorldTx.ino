@@ -1,13 +1,27 @@
 #include <Arduino.h>
 #include <plc_dataplane.h>
+#ifdef ARDUINO_ARCH_ESP8266
+#include <ESP8266WiFi.h>
+#endif
 
 static plc_tx_handle_t *s_tx = nullptr;
+
+// Shared secret for keyed CRC (TX must match RX)
+static const uint8_t SECRET_KEY[] = {'p','l','c','-','k','e','y','1'};
 
 void setup() {
   Serial.begin(115200);
   while (!Serial) {
     yield();
   }
+
+  // Disable WiFi to reduce RF noise and power usage
+#ifdef ARDUINO_ARCH_ESP8266
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_OFF);
+  WiFi.forceSleepBegin();
+  delay(1);
+#endif
 
   plc_tx_config_t cfg = {};
   cfg.modulation = PLC_MOD_FSK;
@@ -17,6 +31,10 @@ void setup() {
 
   // TX pin must be different from RX default pin (D3 / GPIO0).
   cfg.tx_gpio_pin = D4; // D4 (GPIO2)
+
+  // Keyed CRC configuration
+  cfg.secret_key_len = sizeof(SECRET_KEY);
+  memcpy(cfg.secret_key, SECRET_KEY, cfg.secret_key_len);
 
   s_tx = plc_tx_init(&cfg);
   if (!s_tx) {

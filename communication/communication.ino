@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <plc_dataplane.h>
+#ifdef ARDUINO_ARCH_ESP8266
+#include <ESP8266WiFi.h>
+#endif
 
 // ============================
 // Build-time configuration
@@ -9,7 +12,7 @@
 #define ROLE_IS_MASTER 1
 
 // Enable extra logging to Serial
-#define DEBUG_LOG 1
+#define DEBUG_LOG 0
 
 // PLC physical/link parameters (must match on both devices)
 #define PLC_BASE_FREQUENCY_HZ 20000
@@ -17,7 +20,7 @@
 #define PLC_SYMBOL_RATE       1000
 
 // Pins (ESP8266: use 0..15 only; keep TX != RX)
-#define PLC_TX_PIN D4  // e.g., GPIO2
+#define PLC_TX_PIN D2  // e.g., GPIO2
 #define PLC_RX_PIN D3  // e.g., GPIO0
 
 // Application opcodes
@@ -48,6 +51,9 @@
 
 static plc_tx_handle_t* g_tx = nullptr;
 static plc_rx_handle_t* g_rx = nullptr;
+
+// Shared secret for keyed CRC (TX and RX must use the same bytes)
+static const uint8_t SECRET_KEY[] = {'p','l','c','-','k','e','y','1'};
 
 static uint8_t g_rx_buf[PLC_TX_MAX_PAYLOAD_BYTES];
 
@@ -357,6 +363,14 @@ void setup()
   Serial.begin(115200);
   // For ESP8266 Serial is ready immediately.
 
+  // Disable WiFi to reduce RF noise and power usage
+#ifdef ARDUINO_ARCH_ESP8266
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_OFF);
+  WiFi.forceSleepBegin();
+  delay(1);
+#endif
+
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); // indicator
 
@@ -367,6 +381,9 @@ void setup()
   tx_cfg.deviation_hz     = PLC_DEVIATION_HZ;
   tx_cfg.symbol_rate      = PLC_SYMBOL_RATE;
   tx_cfg.tx_gpio_pin      = PLC_TX_PIN;
+  // Keyed CRC configuration
+  tx_cfg.secret_key_len   = sizeof(SECRET_KEY);
+  memcpy(tx_cfg.secret_key, SECRET_KEY, tx_cfg.secret_key_len);
 
   g_tx = plc_tx_init(&tx_cfg);
   if (!g_tx) {
@@ -382,6 +399,9 @@ void setup()
   rx_cfg.deviation_hz     = PLC_DEVIATION_HZ;
   rx_cfg.symbol_rate      = PLC_SYMBOL_RATE;
   rx_cfg.rx_gpio_pin      = PLC_RX_PIN;
+  // Keyed CRC configuration
+  rx_cfg.secret_key_len   = sizeof(SECRET_KEY);
+  memcpy(rx_cfg.secret_key, SECRET_KEY, rx_cfg.secret_key_len);
 
   g_rx = plc_rx_init(&rx_cfg);
   if (!g_rx) {

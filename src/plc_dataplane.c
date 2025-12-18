@@ -30,6 +30,20 @@ static uint8_t plc_crc8(const uint8_t *data, size_t length)
     return crc;
 }
 
+// Byte-wise update helper to avoid temporary buffers.
+static uint8_t plc_crc8_update(uint8_t crc, uint8_t byte)
+{
+    crc ^= byte;
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+        if (crc & 0x80) {
+            crc = (uint8_t)((crc << 1) ^ 0x07);
+        } else {
+            crc <<= 1;
+        }
+    }
+    return crc;
+}
+
 plc_tx_handle_t *plc_tx_init(const plc_tx_config_t *config)
 {
     if (!config) {
@@ -77,8 +91,15 @@ int plc_tx_send(plc_tx_handle_t *handle, const uint8_t *data, size_t length)
     plc_memcpy(&frame[idx], data, length);
     idx += length;
 
-    // CRC8 over [LEN][PAYLOAD].
-    uint8_t crc = plc_crc8(&frame[PLC_TX_PREAMBLE_LEN], 1 + length);
+    // CRC8 over [LEN][PAYLOAD][KEY] (key from TX config).
+    uint8_t crc = 0x00;
+    crc = plc_crc8_update(crc, (uint8_t)length);
+    for (size_t i = 0; i < length; ++i) {
+        crc = plc_crc8_update(crc, data[i]);
+    }
+    for (uint8_t i = 0; i < handle->cfg.secret_key_len; ++i) {
+        crc = plc_crc8_update(crc, handle->cfg.secret_key[i]);
+    }
     frame[idx++] = crc;
 
     // Delegation to platform-specific implementation: send framed bytes.
@@ -382,12 +403,15 @@ int plc_rx_read(plc_rx_handle_t *handle,
 
         uint8_t rx_crc = plc_edges_to_byte_by_means(edges, crc_pos, mean0, mean1);
 
-        // Verify CRC8 over [LEN][PAYLOAD].
-        uint8_t crc_buf[1 + PLC_TX_MAX_PAYLOAD_BYTES];
-        crc_buf[0] = payload_len;
-        plc_memcpy(&crc_buf[1], tmp_payload, payload_len);
-
-        uint8_t calc_crc = plc_crc8(crc_buf, 1U + payload_len);
+        // Verify CRC8 over [LEN][PAYLOAD][KEY].
+        uint8_t calc_crc = 0x00;
+        calc_crc = plc_crc8_update(calc_crc, payload_len);
+        for (uint8_t i = 0; i < payload_len; ++i) {
+            calc_crc = plc_crc8_update(calc_crc, tmp_payload[i]);
+        }
+        for (uint8_t i = 0; i < handle->cfg.secret_key_len; ++i) {
+            calc_crc = plc_crc8_update(calc_crc, handle->cfg.secret_key[i]);
+        }
 
         // Update debug info from the best-scoring candidate.
         if (!have_dbg || (mism < best_mism) || (mism == best_mism && score < best_score)) {

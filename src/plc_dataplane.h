@@ -15,6 +15,10 @@
 // GPIO0 maps to D3 on many ESP8266 dev boards (e.g. NodeMCU).
 #define PLC_RX_DEFAULT_GPIO_PIN 0
 
+// Maximum secret key length (bytes) for keyed CRC.
+// When secret_key_len > 0 the CRC8 is computed over [LEN][PAYLOAD][KEY].
+#define PLC_SECRET_KEY_MAX_LEN 32
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,9 +43,13 @@ typedef enum {
 typedef struct {
     plc_modulation_t modulation;   // Selected modulation scheme
     uint32_t base_frequency_hz;    // Base carrier frequency
-    uint32_t deviation_hz;        // Frequency deviation for FSK
-    uint32_t symbol_rate;         // Symbols per second
-    uint8_t tx_gpio_pin;          // GPIO pin used for output (GPIO number)
+    uint32_t deviation_hz;         // Frequency deviation for FSK
+    uint32_t symbol_rate;          // Symbols per second
+    uint8_t tx_gpio_pin;           // GPIO pin used for output (GPIO number)
+
+    // Keyed-CRC configuration: the same key must be used by TX and RX.
+    uint8_t secret_key[PLC_SECRET_KEY_MAX_LEN]; // Application secret
+    uint8_t secret_key_len;                     // 0..PLC_SECRET_KEY_MAX_LEN
 } plc_tx_config_t;
 
 // Configuration for the PLC receiver.
@@ -52,9 +60,13 @@ typedef struct {
 typedef struct {
     plc_modulation_t modulation;   // Selected modulation scheme
     uint32_t base_frequency_hz;    // Base carrier frequency
-    uint32_t deviation_hz;        // Frequency deviation for FSK
-    uint32_t symbol_rate;         // Symbols per second
-    uint8_t rx_gpio_pin;          // GPIO pin used for input (GPIO number)
+    uint32_t deviation_hz;         // Frequency deviation for FSK
+    uint32_t symbol_rate;          // Symbols per second
+    uint8_t rx_gpio_pin;           // GPIO pin used for input (GPIO number)
+
+    // Keyed-CRC configuration: must match the transmitter.
+    uint8_t secret_key[PLC_SECRET_KEY_MAX_LEN];
+    uint8_t secret_key_len;        // 0..PLC_SECRET_KEY_MAX_LEN
 } plc_rx_config_t;
 
 // Initialize low-level hardware and create transmitter context.

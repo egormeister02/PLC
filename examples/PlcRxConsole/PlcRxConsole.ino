@@ -1,13 +1,27 @@
 #include <Arduino.h>
 #include <plc_dataplane.h>
+#ifdef ARDUINO_ARCH_ESP8266
+#include <ESP8266WiFi.h>
+#endif
 
 static plc_rx_handle_t *s_rx = nullptr;
 static uint8_t s_rx_buf[PLC_TX_MAX_PAYLOAD_BYTES];
 static uint8_t s_rx_pin = D3;
 
+// Shared secret for keyed CRC (must match transmitter)
+static const uint8_t SECRET_KEY[] = {'p','l','c','-','k','e','y','1'};
+
 void setup() {
   Serial.begin(115200);
   delay(200);
+
+  // Disable WiFi to reduce RF noise and power usage
+#ifdef ARDUINO_ARCH_ESP8266
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_OFF);
+  WiFi.forceSleepBegin();
+  delay(1);
+#endif
 
   // Visual liveness indicator.
   pinMode(LED_BUILTIN, OUTPUT);
@@ -29,6 +43,10 @@ void setup() {
   // Default RX pin is D3 (GPIO0). It must be different from TX pin.
   cfg.rx_gpio_pin = D3;
   s_rx_pin = cfg.rx_gpio_pin;
+
+  // Keyed CRC configuration
+  cfg.secret_key_len = sizeof(SECRET_KEY);
+  memcpy(cfg.secret_key, SECRET_KEY, cfg.secret_key_len);
 
   Serial.print(F("RX pin (Arduino pin number)="));
   Serial.println((int)s_rx_pin);
