@@ -273,7 +273,12 @@ int plc_rx_read(plc_rx_handle_t *handle,
     const size_t preamble_len_bits = PLC_TX_PREAMBLE_LEN * 8U;
     const size_t min_bits_after_preamble = 8U + 8U; // LEN + CRC (payload may be empty, but we reject len=0)
 
-    const size_t scan_limit = (PLC_RX_MAX_FRAME_BITS > 256U + preamble_len_bits) ? 256U : 0U;
+    // NOTE: capture start can be slightly early due to noise / start-condition jitter.
+    // Scan the whole captured window so we can still find the preamble later in the buffer.
+    const size_t scan_limit =
+        (PLC_RX_MAX_FRAME_BITS > (preamble_len_bits + min_bits_after_preamble))
+            ? (PLC_RX_MAX_FRAME_BITS - (preamble_len_bits + min_bits_after_preamble))
+            : 0U;
 
     bool saw_crc_mismatch = false;
 
